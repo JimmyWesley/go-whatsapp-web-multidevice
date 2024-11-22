@@ -3,6 +3,8 @@ package validations
 import (
 	"context"
 	"fmt"
+	"os"
+
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
 	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
 	pkgError "github.com/aldinokemal/go-whatsapp-web-multidevice/pkg/error"
@@ -204,4 +206,68 @@ func ValidateSendPoll(ctx context.Context, request domainSend.PollRequest) error
 
 	return nil
 
+}
+
+func ValidateSendChatPresence(ctx context.Context, request domainSend.ChatPresenceRequest) error {
+	err := validation.ValidateStructWithContext(ctx, &request,
+		validation.Field(&request.Phone, validation.Required),
+		validation.Field(&request.Presence, validation.Required, validation.In("composing", "paused")),
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func ValidateSendPTT(ctx context.Context, request domainSend.PTTRequest) error {
+	err := validation.ValidateStructWithContext(ctx, &request,
+		validation.Field(&request.Phone, validation.Required),
+		validation.Field(&request.Audio, validation.Required),
+	)
+
+	if err != nil {
+		return pkgError.ValidationError(err.Error())
+	}
+
+	availableMimes := map[string]bool{
+		"audio/aac":  true,
+		"audio/amr":  true,
+		"audio/flac": true,
+		"audio/m4a":  true,
+		"audio/m4r":  true,
+		"audio/mp3":  true,
+		"audio/mpeg": true,
+		"audio/ogg":  true,
+
+		"audio/wma":      true,
+		"audio/x-ms-wma": true,
+
+		"audio/wav":      true,
+		"audio/vnd.wav":  true,
+		"audio/vnd.wave": true,
+		"audio/wave":     true,
+		"audio/x-pn-wav": true,
+		"audio/x-wav":    true,
+	}
+	availableMimesStr := ""
+	for k := range availableMimes {
+		availableMimesStr += k + ","
+	}
+
+	if !availableMimes[request.Audio.Header.Get("Content-Type")] {
+		return pkgError.ValidationError(fmt.Sprintf("your audio type is not allowed. please use (%s)", availableMimesStr))
+	}
+
+	return nil
+}
+
+// Validador customizado para verificar se o arquivo existe
+func fileExistsValidator(value interface{}) error {
+	if path, ok := value.(string); ok {
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			return fmt.Errorf("file does not exist: %s", path)
+		}
+	}
+	return nil
 }

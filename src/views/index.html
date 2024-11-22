@@ -61,6 +61,7 @@
         <send-location></send-location>
 
         <send-audio></send-audio>
+        <send-ptt></send-ptt>
         <send-poll></send-poll>
     </div>
 
@@ -131,9 +132,7 @@
     window.http = axios.create({
         baseURL: `${window.location.protocol}//${window.location.hostname}${window.location.port ? ':' + window.location.port : ''}`
     });
-    {{ if isEnableBasicAuth .BasicAuthToken }}
-    window.http.defaults.headers.common['Authorization'] = {{ .BasicAuthToken }};
-    {{ end }}
+
 </script>
 <script type="module">
     import AppLogin from "./components/AppLogin.js";
@@ -147,6 +146,7 @@
     import SendContact from "./components/SendContact.js";
     import SendLocation from "./components/SendLocation.js";
     import SendAudio from "./components/SendAudio.js";
+    import SendPTT from "./components/SendPTT.js";
     import SendPoll from "./components/SendPoll.js";
     import MessageDelete from "./components/MessageDelete.js";
     import MessageUpdate from "./components/MessageUpdate.js";
@@ -183,7 +183,7 @@
     Vue.createApp({
         components: {
             AppLogin, AppLoginWithCode, AppLogout, AppReconnect,
-            SendMessage, SendImage, SendFile, SendVideo, SendContact, SendLocation, SendAudio, SendPoll,
+            SendMessage, SendImage, SendFile, SendVideo, SendContact, SendLocation, SendAudio, SendPTT, SendPoll,
             MessageDelete, MessageUpdate, MessageReact, MessageRevoke,
             GroupList, GroupCreate, GroupJoinWithLink, GroupAddParticipants,
             NewsletterList,

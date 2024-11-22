@@ -489,6 +489,11 @@ func ExtractMedia(storageLocation string, mediaFile whatsmeow.DownloadableMessag
 		extension = "." + parts[len(parts)-1]
 	}
 
+	//verifica se na extensão existe ; se sim, remove
+	if strings.Contains(extension, ";") {
+		extension = strings.Split(extension, ";")[0]
+	}
+
 	extractedMedia.MediaPath = fmt.Sprintf("%s/%d-%s%s", storageLocation, time.Now().Unix(), uuid.NewString(), extension)
 	err = os.WriteFile(extractedMedia.MediaPath, data, 0600)
 	if err != nil {

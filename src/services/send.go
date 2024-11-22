@@ -3,6 +3,12 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"slices"
+	"strings"
+
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/config"
 	"github.com/aldinokemal/go-whatsapp-web-multidevice/domains/app"
 	domainSend "github.com/aldinokemal/go-whatsapp-web-multidevice/domains/send"
@@ -19,9 +25,6 @@ import (
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"google.golang.org/protobuf/proto"
-	"net/http"
-	"os"
-	"os/exec"
 )
 
 type serviceSend struct {
@@ -150,6 +153,7 @@ func (service serviceSend) SendImage(ctx context.Context, request domainSend.Ima
 		imagePath = newImagePath
 	} else {
 		imagePath = oriImagePath
+		deletedItems = append(deletedItems, oriImagePath)
 	}
 
 	// Send to WA server
@@ -455,8 +459,12 @@ func (service serviceSend) SendAudio(ctx context.Context, request domainSend.Aud
 		return response, err
 	}
 
+	waveform, seconds := getAudioInfo(autioBytes, strings.Split(audioMimeType, "/")[1])
+
 	msg := &waE2E.Message{
 		AudioMessage: &waE2E.AudioMessage{
+			Seconds:       proto.Uint32(seconds),
+			Waveform:      waveform,
 			URL:           proto.String(audioUploaded.URL),
 			DirectPath:    proto.String(audioUploaded.DirectPath),
 			Mimetype:      proto.String(audioMimeType),
@@ -464,6 +472,7 @@ func (service serviceSend) SendAudio(ctx context.Context, request domainSend.Aud
 			FileSHA256:    audioUploaded.FileSHA256,
 			FileEncSHA256: audioUploaded.FileEncSHA256,
 			MediaKey:      audioUploaded.MediaKey,
+			PTT:           proto.Bool(true),
 		},
 	}
 
@@ -497,6 +506,75 @@ func (service serviceSend) SendPoll(ctx context.Context, request domainSend.Poll
 	return response, nil
 }
 
+func (service serviceSend) SendPTT(ctx context.Context, request domainSend.PTTRequest) (response domainSend.GenericResponse, err error) {
+	// Validação do request
+	err = validations.ValidateSendPTT(ctx, request)
+	if err != nil {
+		return response, err
+	}
+
+	// Conversão do arquivo de áudio para bytes
+	audioBytes := helpers.MultipartFormFileHeaderToBytes(request.Audio)
+	// Verificação se o arquivo de áudio não está vazio
+	if len(audioBytes) == 0 {
+		return response, fmt.Errorf("o arquivo de áudio está vazio")
+	}
+
+	// Detecção do tipo MIME do áudio
+	audioMimeType := http.DetectContentType(audioBytes)
+
+	// Verificação e conversão para o formato OGG com codec Opus, se necessário
+	if audioMimeType != "audio/ogg" {
+		convertedBytes, err := helpers.ConvertToOggOpus(audioBytes)
+		if err != nil {
+			return response, fmt.Errorf("falha ao converter áudio para OGG Opus: %v", err)
+		}
+		audioBytes = convertedBytes
+	}
+
+	// Validate request
+	err = validations.ValidateSendPTT(ctx, request)
+	if err != nil {
+		return response, err
+	}
+
+	// Validate JID
+	dataWaRecipient, err := whatsapp.ValidateJidWithLogin(service.WaCli, request.Phone)
+	if err != nil {
+		return response, err
+	}
+
+	// Upload the audio file
+	uploaded, err := service.uploadMedia(ctx, whatsmeow.MediaAudio, audioBytes, dataWaRecipient)
+	if err != nil {
+		return response, fmt.Errorf("failed to upload audio: %w", err)
+	}
+
+	// Create audio message
+	msg := &waE2E.Message{
+		AudioMessage: &waE2E.AudioMessage{
+			URL:           proto.String(uploaded.URL),
+			Mimetype:      proto.String("audio/ogg"),
+			FileLength:    proto.Uint64(uint64(len(audioBytes))),
+			PTT:           proto.Bool(true), // This makes it a voice message
+			MediaKey:      uploaded.MediaKey,
+			DirectPath:    proto.String(uploaded.DirectPath),
+			FileEncSHA256: uploaded.FileEncSHA256,
+			FileSHA256:    uploaded.FileSHA256,
+		},
+	}
+
+	// Send the message
+	ts, err := service.WaCli.SendMessage(ctx, dataWaRecipient, msg)
+	if err != nil {
+		return response, fmt.Errorf("failed to send PTT: %w", err)
+	}
+
+	response.MessageID = ts.ID
+	response.Status = fmt.Sprintf("Send PTT success to %s (server timestamp: %s)", request.Phone, ts.Timestamp.String())
+	return response, nil
+}
+
 func (service serviceSend) getMentionFromText(_ context.Context, messages string) (result []string) {
 	mentions := utils.ContainsMention(messages)
 	for _, mention := range mentions {
@@ -509,6 +587,45 @@ func (service serviceSend) getMentionFromText(_ context.Context, messages string
 
 }
 
+func (service serviceSend) SendChatPresence(ctx context.Context, request domainSend.ChatPresenceRequest) (response domainSend.GenericResponse, err error) {
+	// Validar JID
+	dataWaRecipient, err := whatsapp.ValidateJidWithLogin(service.WaCli, request.Phone)
+	if err != nil {
+		return response, err
+	}
+
+	// Mapear presença
+	var state types.ChatPresence
+	switch request.Presence {
+	case "composing":
+		state = types.ChatPresenceComposing
+	case "paused":
+		state = types.ChatPresencePaused
+	default:
+		return response, fmt.Errorf("invalid presence type: %s", request.Presence)
+	}
+
+	// Mapear mídia (já atribuído na validação, mas podemos reforçar o padrão aqui)
+	var media types.ChatPresenceMedia
+	switch request.Media {
+	case "audio":
+		media = types.ChatPresenceMediaAudio
+	case "":
+		media = types.ChatPresenceMediaText
+	default:
+		return response, fmt.Errorf("invalid media type: %s", request.Media)
+	}
+
+	// Enviar presença
+	err = service.WaCli.SendChatPresence(dataWaRecipient, state, media)
+	if err != nil {
+		return response, err
+	}
+
+	response.Status = fmt.Sprintf("Send chat presence success to %s with state %s and media %s", request.Phone, request.Presence, request.Media)
+	return response, nil
+}
+
 func (service serviceSend) uploadMedia(ctx context.Context, mediaType whatsmeow.MediaType, media []byte, recipient types.JID) (uploaded whatsmeow.UploadResponse, err error) {
 	if recipient.Server == types.NewsletterServer {
 		uploaded, err = service.WaCli.UploadNewsletter(ctx, media, mediaType)
@@ -516,4 +633,33 @@ func (service serviceSend) uploadMedia(ctx context.Context, mediaType whatsmeow.
 		uploaded, err = service.WaCli.Upload(ctx, media, mediaType)
 	}
 	return uploaded, err
+}
+
+func getAudioInfo(audio []byte, extension string) (output []byte, Duration uint32) {
+
+	// Get audio duration
+	duration, err := helpers.GetAudioDuration(audio, extension)
+	if err != nil {
+		return nil, 0
+	}
+	Duration = uint32(duration)
+
+	// Get audio waveform
+	waveform, err := helpers.GetAudioWaveform(audio, extension)
+	if err != nil {
+		return nil, 0
+	}
+
+	maxVal := slices.Max(waveform)
+	output = make([]byte, len(waveform))
+	if maxVal < 256 {
+		for i, part := range waveform {
+			output[i] = byte(part)
+		}
+	} else {
+		for i, part := range waveform {
+			output[i] = min(byte(part/4), 255)
+		}
+	}
+	return
 }

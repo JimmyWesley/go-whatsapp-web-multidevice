@@ -22,7 +22,7 @@ var (
 	WhatsappAutoReplyMessage    string
 	WhatsappWebhook             string
 	WhatsappWebhookSecret             = "secret"
-	WhatsappLogLevel                  = "ERROR"
+	WhatsappLogLevel                  = "DEBUG"
 	WhatsappSettingMaxFileSize  int64 = 50000000  // 50MB
 	WhatsappSettingMaxVideoSize int64 = 100000000 // 100MB
 	WhatsappTypeUser                  = "@s.whatsapp.net"

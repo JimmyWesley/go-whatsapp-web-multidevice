@@ -22,6 +22,8 @@ func InitRestSend(app *fiber.App, service domainSend.ISendService) Send {
 	app.Post("/send/location", rest.SendLocation)
 	app.Post("/send/audio", rest.SendAudio)
 	app.Post("/send/poll", rest.SendPoll)
+	app.Post("/send/chat-presence", rest.SendChatPresence)
+	app.Post("/send/ptt", rest.SendPTT)
 	return rest
 }
 
@@ -171,6 +173,25 @@ func (controller *Send) SendAudio(c *fiber.Ctx) error {
 	utils.PanicIfNeeded(err)
 
 	audio, err := c.FormFile("audio")
+	//verifica existencia do arquivo e retorn informações do arquivo
+	if audio == nil {
+		return c.JSON(utils.ResponseData{
+			Status:  400,
+			Code:    "ERROR",
+			Message: "Audio file not found",
+			Results: nil,
+		})
+	}
+
+	// if audio != nil {
+	// 	return c.JSON(utils.ResponseData{
+	// 		Status:  200,
+	// 		Code:    "SUCCESS",
+	// 		Message: "Audio file found",
+	// 		Results: audio,
+	// 	})
+	// }
+
 	utils.PanicIfNeeded(err)
 
 	request.Audio = audio
@@ -195,6 +216,42 @@ func (controller *Send) SendPoll(c *fiber.Ctx) error {
 	whatsapp.SanitizePhone(&request.Phone)
 
 	response, err := controller.Service.SendPoll(c.UserContext(), request)
+	utils.PanicIfNeeded(err)
+
+	return c.JSON(utils.ResponseData{
+		Status:  200,
+		Code:    "SUCCESS",
+		Message: response.Status,
+		Results: response,
+	})
+}
+
+func (controller *Send) SendChatPresence(c *fiber.Ctx) error {
+	var request domainSend.ChatPresenceRequest
+	err := c.BodyParser(&request)
+	utils.PanicIfNeeded(err)
+
+	whatsapp.SanitizePhone(&request.Phone)
+
+	response, err := controller.Service.SendChatPresence(c.UserContext(), request)
+	utils.PanicIfNeeded(err)
+
+	return c.JSON(utils.ResponseData{
+		Status:  200,
+		Code:    "SUCCESS",
+		Message: response.Status,
+		Results: response,
+	})
+}
+
+func (controller *Send) SendPTT(c *fiber.Ctx) error {
+	var request domainSend.PTTRequest
+	err := c.BodyParser(&request)
+	utils.PanicIfNeeded(err)
+
+	whatsapp.SanitizePhone(&request.Phone)
+
+	response, err := controller.Service.SendPTT(c.UserContext(), request)
 	utils.PanicIfNeeded(err)
 
 	return c.JSON(utils.ResponseData{

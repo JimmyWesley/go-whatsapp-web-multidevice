@@ -14,6 +14,8 @@ type ISendService interface {
 	SendLocation(ctx context.Context, request LocationRequest) (response GenericResponse, err error)
 	SendAudio(ctx context.Context, request AudioRequest) (response GenericResponse, err error)
 	SendPoll(ctx context.Context, request PollRequest) (response GenericResponse, err error)
+	SendChatPresence(ctx context.Context, request ChatPresenceRequest) (response GenericResponse, err error)
+	SendPTT(ctx context.Context, request PTTRequest) (response GenericResponse, err error)
 }
 
 type GenericResponse struct {

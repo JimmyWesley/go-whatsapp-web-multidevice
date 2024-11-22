@@ -11,6 +11,9 @@ RUN go mod download
 # Build the binary.
 RUN go build -o /app/whatsapp
 
+#create  volume whatsapp_go e que aponta para a pasta de app/storege
+VOLUME whatsapp_go
+
 #############################
 ## STEP 2 build a smaller image
 #############################
